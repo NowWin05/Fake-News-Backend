@@ -17,15 +17,19 @@ const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();
 const TfIdf = natural.TfIdf;
 
-// Improved sentiment analysis function that better detects nuanced sentiment
+// Improved sentiment analysis function with boosted positive and negative scores
 const analyzeSentiment = (text) => {
   // Tokenize and count sentiment words
   const words = tokenizer.tokenize(text.toLowerCase());
+  // console.log("these are words "+words);
+
+
   let positive = 0;
   let negative = 0;
   
   // Use a more sophisticated word matching approach
   words.forEach(word => {
+    
     // For positive words, check for negation in preceding words
     const isPositiveWord = positiveWords.some(pos => {
       // Check if word matches or contains the positive word
@@ -33,15 +37,19 @@ const analyzeSentiment = (text) => {
     });
     
     if (isPositiveWord) {
+      console.log("this is a positive word " + word);
       // Check for negations in nearby words that could flip sentiment
       const wordIndex = words.indexOf(word);
       const previousWords = words.slice(Math.max(0, wordIndex - 3), wordIndex);
       const hasNegation = previousWords.some(w => ['not', 'no', 'never', "don't", "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't"].includes(w));
       
+      // Apply boosted scoring - positives get greater weight
       if (hasNegation) {
-        negative++;
+        // console.log("this is a negation ");
+        negative += 1.5; // Increased weight for negated positive words
       } else {
-        positive++;
+        // console.log("this is a positive word ");
+        positive += 1.5; // Increased weight for positive words (boosted from 1.0)
       }
     }
     
@@ -51,27 +59,64 @@ const analyzeSentiment = (text) => {
     });
     
     if (isNegativeWord) {
+      console.log("this is a negative word " + word);
       const wordIndex = words.indexOf(word);
       const previousWords = words.slice(Math.max(0, wordIndex - 3), wordIndex);
       const hasNegation = previousWords.some(w => ['not', 'no', 'never', "don't", "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't"].includes(w));
       
+      // Apply boosted scoring - negatives get greater weight
       if (hasNegation) {
-        positive++;
+        // console.log("this is a positive ");
+        
+        positive += 1.5; // Increased weight for negated negative words
       } else {
-        negative++;
+        // console.log("this is a negation ");
+        negative += 1.5; // Increased weight for negative words (boosted from 1.0)
+      }
+    }
+  });
+  
+  // Check for intensifiers to boost scores further
+  const intensifiers = ['very', 'extremely', 'highly', 'absolutely', 'completely', 'totally', 'utterly', 'really', 'especially'];
+  words.forEach((word, index) => {
+    if (intensifiers.includes(word)) {
+      // Look at the word following the intensifier
+      if (index + 1 < words.length) {
+        const nextWord = words[index + 1];
+        // Check if next word is positive
+        if (positiveWords.some(pos => nextWord === pos || nextWord.includes(pos))) {
+          positive += 1.0; // Extra boost for intensified positive words
+        }
+        // Check if next word is negative
+        if (negativeWords.some(neg => nextWord === neg || nextWord.includes(neg))) {
+          negative += 1.0; // Extra boost for intensified negative words
+        }
       }
     }
   });
   
   const total = words.length;
-  const positiveScore = total > 0 ? Math.round((positive / total) * 100) : 0;
-  const negativeScore = total > 0 ? Math.round((negative / total) * 100) : 0;
-  const neutralScore = 100 - positiveScore - negativeScore;
+  
+  // Calculate scores with boosting factor
+  const boostMultiplier = 1.25; // Multiplier to increase overall sentiment detection sensitivity
+  let positiveScore = total > 0 ? Math.round((positive / total) * 100 * boostMultiplier) : 0;
+  let negativeScore = total > 0 ? Math.round((negative / total) * 100 * boostMultiplier) : 0;
+  
+  // Cap the scores at 100
+  positiveScore = Math.min(positiveScore, 100);
+  negativeScore = Math.min(negativeScore, 100);
+  
+  // Apply a boost to ensure non-zero scores when sentiment is detected
+  if (positive > 0 && positiveScore < 15) positiveScore = 15; // Minimum positive score if any positive words are found
+  if (negative > 0 && negativeScore < 15) negativeScore = 15; // Minimum negative score if any negative words are found
+  
+  // Calculate neutral score after boosting
+  const neutralScore = Math.max(0, 100 - positiveScore - negativeScore);
   
   return {
     positive: positiveScore,
     negative: negativeScore,
-    neutral: Math.max(0, neutralScore),
+    neutral: neutralScore,
     tone: positiveScore > negativeScore ? 'positive' : 
           negativeScore > positiveScore ? 'negative' : 'neutral'
   };
@@ -130,7 +175,7 @@ const calculateLanguageScore = (text) => {
     baseScore + (scientificScore * 1.8 * sentenceStructureFactor) - (sensationalScore * 2.5)
   ));
   
-  console.log(`Language score: ${languageScore} (scientific: ${scientificScore}, sensational: ${sensationalScore}, structure factor: ${sentenceStructureFactor})`);
+  // console.log(`Language score: ${languageScore} (scientific: ${scientificScore}, sensational: ${sensationalScore}, structure factor: ${sentenceStructureFactor})`);
   
   return Math.round(languageScore);
 };
@@ -189,12 +234,12 @@ const calculateBias = (text) => {
   const totalBiasWords = leftCount + rightCount;
   
   if (totalBiasWords > 0) {
-    biasScore = (rightCount - leftCount) / totalBiasWords;
+    biasScore = (rightCount - leftCount) / totalBiasWords*10;
   }
   
-  console.log(`Bias analysis: Left words: ${leftCount}, Right words: ${rightCount}, Score: ${biasScore}`);
+  // console.log(`Bias analysis: Left words: ${leftCount}, Right words: ${rightCount}, Score: ${biasScore}`);
   if (biasWordContext.length > 0) {
-    console.log('Bias word context:', biasWordContext);
+    // console.log('Bias word context:', biasWordContext);
   }
   
   return biasScore;

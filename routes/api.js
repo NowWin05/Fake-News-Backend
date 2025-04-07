@@ -29,6 +29,7 @@ router.post('/analyze', async (req, res) => {
                         $('title').text() || 
                         url;
         }
+        // console.log("originalTitle is " + JSON.stringify(originalTitle));
         
         // Extract content using more robust selectors
         analysisText = $('article').text() || 
@@ -36,13 +37,29 @@ router.post('/analyze', async (req, res) => {
                       $('.content').text() || 
                       $('p').text().substring(0, 5000) || 
                       $('body').text().substring(0, 2000);
+
+        // console.log("analysisText is " + JSON.stringify(analysisText));
                       
         sourceDomain = sourceService.extractDomain(url);
+        // console.log("sourceDomain is " + sourceDomain);
       } catch (error) {
-        console.error('Error fetching URL:', error);
+        // console.error('Error fetching URL:', error);
       }
     }
+    // const OpenAI  = require('openai');
 
+    // const openai = new OpenAI({
+    //         baseURL: 'https://api.deepseek.com',
+    //         apiKey: 'sk-c13da2d8581a404dade0749291bc66b9'
+    // });
+    
+    //   const completion = await openai.chat.completions.create({
+    //     messages: [{ role: "news analyser ", content: "You are a helpful assistant." }],
+    //     model: "deepseek-chat",
+    //   });
+    
+    //   console.log(completion.choices[0].message.content);
+    
     // Use provided content if URL extraction failed or wasn't provided
     if (!analysisText) {
       analysisText = content || originalTitle || '';
@@ -78,7 +95,7 @@ router.post('/analyze', async (req, res) => {
       const words = analyzer.tokenizer.tokenize((content || analysisText).toLowerCase());
       const coherenceScore = newsAnalyzer.analyzeTextCoherence(words, (content || analysisText).toLowerCase());
       
-      console.log(`Content quality analysis: structural: ${structuralScore}, coherence: ${coherenceScore}`);
+      // console.log(`Content quality analysis: structural: ${structuralScore}, coherence: ${coherenceScore}`);
       
       // Adjust credibility score for unknown sources based on content quality
       const contentQualityScore = (structuralScore * 0.5) + (coherenceScore * 0.5);
@@ -107,9 +124,9 @@ router.post('/analyze', async (req, res) => {
       sourceReliability: sourceData.reliability,
       credibilityScore: credibilityScore,
       languageScore: languageScore,
+      
       contentScore: Math.min(sourceData.reliability + 10, 100),
       factScore: Math.min(sourceData.reliability + (sourceData.factChecking * 5), 100),
-      
       // Verification status
       verificationStatus: analyzer.getVerificationStatus(credibilityScore),
 
@@ -199,11 +216,11 @@ router.post('/analyze', async (req, res) => {
       }
     };
 
-    console.log("API response includes socialMetrics:", !!result.socialMetrics);
+    // console.log("API response includes socialMetrics:", !!result.socialMetrics);
     
     res.json(result);
   } catch (error) {
-    console.error('Analysis error:', error);
+    // console.error('Analysis error:', error);
     res.status(500).json({ error: 'Error analyzing content' });
   }
 });

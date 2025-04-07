@@ -4,6 +4,7 @@
  */
 const analyzer = require('./analyzer');
 const sourceService = require('./sourceData');
+const mlModels = require('./mlModels');
 const {fakePhrases}=require('./../data');
 
 // Additional imports for improved text analysis
@@ -42,7 +43,7 @@ const analyzeContent = async (title, content, sourceUrl) => {
     );
     
     const sensationalScore = sensationalWordsFound.length / words.length;
-    console.log(`Sensational words found: ${sensationalWordsFound.length}, words: ${sensationalWordsFound.join(', ')}`);
+    // console.log(`Sensational words found: ${sensationalWordsFound.length}, words: ${sensationalWordsFound.join(', ')}`);
 
     // Calculate scientific language score
     const scientificWordsFound = words.filter(word => 
@@ -53,7 +54,7 @@ const analyzeContent = async (title, content, sourceUrl) => {
     );
     
     const scientificScore = scientificWordsFound.length / words.length;
-    console.log(`Scientific words found: ${scientificWordsFound.length}, words: ${scientificWordsFound.join(', ')}`);
+    // console.log(`Scientific words found: ${scientificWordsFound.length}, words: ${scientificWordsFound.join(', ')}`);
 
     // Calculate language score (0-100) based on sensational vs scientific language
     const languageScore = Math.max(0, Math.min(100, 50 - (sensationalScore * 200) + (scientificScore * 200)));
@@ -68,7 +69,7 @@ const analyzeContent = async (title, content, sourceUrl) => {
         }
     });
     if (fakePhrasesCount > 0) {
-        console.log(`Fake phrases found: ${fakePhrasesList.join(', ')}`);
+        // console.log(`Fake phrases found: ${fakePhrasesList.join(', ')}`);
     }
     
     // Calculate fake phrases score (0-1)
@@ -76,61 +77,100 @@ const analyzeContent = async (title, content, sourceUrl) => {
     
     // NEW: Analyze structural elements that indicate quality journalism
     const structuralScore = analyzeStructuralElements(content);
-    console.log(`Structural quality score: ${structuralScore}`);
+    // console.log(`Structural quality score: ${structuralScore}`);
     
     // NEW: Content coherence analysis
     const coherenceScore = analyzeTextCoherence(words, fullText);
-    console.log(`Content coherence score: ${coherenceScore}`);
+    // console.log(`Content coherence score: ${coherenceScore}`);
     
     // Check source URL credibility
-    const sourceCredibility = checkSourceCredibility(sourceUrl);
+    const sourceCredibility = await checkSourceCredibility(sourceUrl);
     const isHighlyCredibleSource = sourceCredibility >= 85;
 
     // Initialize red flags array
     const redFlags = [];
     
-    // Calculate overall credibility score with improved algorithm
-    let credibilityScore = calculateCredibilityScore(
-        sensationalScore, fakePhraseScore, scientificScore,
-        sourceCredibility, isHighlyCredibleSource, words.length, content,
-        structuralScore, coherenceScore, // New parameters
-        redFlags
-    );
+    // NEW: Use ML-powered credibility score calculation when possible
+    let credibilityScore;
+    try {
+        // console.log('Calculating credibility score with ML model...');
+        credibilityScore = await mlModels.calculateCredibilityScoreML({
+            title,
+            content, 
+            sourceReliability: sourceCredibility,
+            structuralScore,
+            coherenceScore
+        });
+        // console.log(`ML credibility score: ${credibilityScore}`);
+    } catch (error) {
+        // console.error('Error using ML for credibility score, falling back to rule-based:', error);
+        // Fall back to the traditional scoring method
+        credibilityScore = calculateCredibilityScore(
+            sensationalScore, fakePhraseScore, scientificScore,
+            sourceCredibility, isHighlyCredibleSource, words.length, content,
+            structuralScore, coherenceScore,
+            redFlags
+        );
+    }
     
-    // Improved sentiment analysis
-    const sentiment = analyzer.analyzeSentiment(fullText);
+    // NEW: Use ML-based sentiment analysis when possible
+    let sentiment;
+    try {
+        // console.log('Analyzing sentiment with ML model...');
+        sentiment = await mlModels.analyzeSentimentWithML(fullText);
+        // console.log('ML sentiment analysis complete');
+    } catch (error) {
+        // console.error('Error using ML for sentiment analysis, falling back to rule-based:', error);
+        // Fall back to the traditional sentiment analysis
+        sentiment = analyzer.analyzeSentiment(fullText);
+    }
 
-    // Calculate bias score (-1 to 1)
-    const biasScore = analyzer.calculateBias(fullText);
+    // NEW: Use ML-based bias detection when possible
+    let biasResult;
+    try {
+        // console.log('Calculating bias with ML model...');
+        biasResult = await mlModels.calculateBiasScoreML(fullText);
+        // console.log(`ML bias score: ${biasResult.biasScore}, level: ${biasResult.biasLevel}`);
+    } catch (error) {
+        // console.error('Error using ML for bias detection, falling back to rule-based:', error);
+        // Fall back to the traditional bias calculation
+        const biasScore = analyzer.calculateBias(fullText);
+        biasResult = {
+            biasScore,
+            biasLevel: analyzer.getBiasLevel(biasScore)
+        };
+    }
     
     // Log analysis details for debugging
-    console.log('Content analysis details:', {
-        contentLength: words.length,
-        sensationalScore,
-        scientificScore,
-        languageScore,
-        structuralScore,
-        coherenceScore,
-        sourceCredibility,
-        isHighlyCredibleSource,
-        finalCredibilityScore: credibilityScore,
-        redFlags
-    });
+    // console.log('Content analysis details:',
+    //      {
+    //     contentLength: words.length,
+    //     sensationalScore,
+    //     scientificScore,
+    //     languageScore,
+    //     structuralScore,
+    //     coherenceScore,
+    //     sourceCredibility,
+    //     isHighlyCredibleSource,
+    //     finalCredibilityScore: credibilityScore,
+    //     redFlags
+    // });
 
     return {
         credibilityScore,
-        biasScore,
+        biasScore: biasResult.biasScore,
         languageScore,
         analysis: {
             factualAccuracy: credibilityScore,
             sourceReliability: sourceCredibility,
             languageScore,
-            biasLevel: analyzer.getBiasLevel(biasScore),
+            biasLevel: biasResult.biasLevel,
             verificationStatus: analyzer.getVerificationStatus(credibilityScore),
             redFlags: redFlags.length > 0 ? redFlags : ['none detected'],
             sentiment,
             contentStructure: structuralScore,
-            contentCoherence: coherenceScore
+            contentCoherence: coherenceScore,
+            mlConfidence: biasResult.confidence || 70
         }
     };
 };
@@ -312,7 +352,7 @@ const calculateCredibilityScore = (
 };
 
 // Helper function to check source credibility
-const checkSourceCredibility = (sourceUrl) => {
+const checkSourceCredibility = async (sourceUrl) => {
     if (!sourceUrl || sourceUrl === 'No source URL') {
         return 50; // Changed from 40 to more neutral default
     }
@@ -339,18 +379,12 @@ const checkSourceCredibility = (sourceUrl) => {
 const isMainstreamNewsDomain = (domain) => {
     // Check if the domain contains common news-related terms
     const newsDomainKeywords = ['news', 'post', 'herald', 'tribune', 'times', 'daily', 'journal', 'gazette'];
-    const isDomainLikelyNews = newsDomainKeywords.some(keyword => domain.includes(keyword));
-    
-    // Check if the domain ends with common news TLDs
-    const isNewsTLD = domain.endsWith('.com') || domain.endsWith('.org') || domain.endsWith('.net');
-    
-    return isDomainLikelyNews && isNewsTLD;
+    return newsDomainKeywords.some(keyword => domain.includes(keyword));
 };
 
 module.exports = {
     analyzeContent,
-    fakePhrases,
-    // Export new functions for testing
     analyzeStructuralElements,
-    analyzeTextCoherence
+    analyzeTextCoherence,
+    calculateVariance
 };
