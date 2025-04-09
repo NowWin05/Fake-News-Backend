@@ -2,60 +2,61 @@
  * News Controller
  * Handles request processing and response for news routes
  */
+require('dotenv').config(); // at top of file
+
 const News = require('../models/News');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const newsAnalyzer = require('../services/newsAnalyzer');
-const sourceService = require('../services/sourceData');
-const analyzer = require('../services/analyzer');
+const { analyzeWithMLModel } = require('../services/newsAnalyzer'); // Import the new function
+
 
 // Submit news for analysis
 const analyzeNews = async (req, res) => {
     try {
-        const { title, content, sourceUrl } = req.body;
-        
-        // Check if at least one field is provided
+        console.log('Incoming request body:', req.body); // Log the request body
+        let { title, content, sourceUrl } = req.body;
+
+        // If title and content are missing, extract them from the source URL
+        if (!title && !content && sourceUrl) {
+            console.log('Extracting title and content from source URL:', sourceUrl);
+            const response = await axios.get(sourceUrl);
+            const $ = cheerio.load(response.data);
+
+            title = $('meta[property="og:title"]').attr('content') || $('title').text() || 'Unknown Title';
+            content = $('meta[property="og:description"]').attr('content') ||
+                      $('meta[name="description"]').attr('content') ||
+                      $('article').text() ||
+                      $('p').text() ||
+                      'No content available';
+        }
+
+        // Validate that at least one field is now available
         if (!title && !content && !sourceUrl) {
-            return res.status(400).json({ 
-                message: 'Please provide at least one of: title, content, or source URL' 
+            return res.status(400).json({
+                message: 'Please provide at least one of: title, content, or source URL'
             });
         }
 
-        // Extract and process content
-        const { analyzedTitle, analyzedContent, sourceDomain } = 
-            await extractContentFromSource(title, content, sourceUrl);
-        
-        // Perform content analysis with available data
-        const analysis = await newsAnalyzer.analyzeContent(
-            analyzedTitle || title || '',
-            analyzedContent || content || '',
-            sourceUrl || ''
-        );
-        
-        console.log('Analysis results:', {
-            title: analyzedTitle || title || 'Unknown Title',
-            biasScore: analysis.biasScore,
-            biasLevel: analysis.analysis.biasLevel
-        });
-        
-        // Create new news entry
+        // Call the ML model for analysis
+        const mlModelOutput = await analyzeWithMLModel(title, content, sourceUrl);
+
+        // Save the analysis result in the database
         const news = new News({
-            title: analyzedTitle || title || 'Unknown Title',
-            content: analyzedContent || content || 'No content available',
+            title: title || 'Unknown Title',
+            content: content || 'No content available',
             sourceUrl: sourceUrl || 'No source URL',
-            ...analysis
+            analysis: mlModelOutput
         });
 
-        // Save to database
         await news.save();
-        
-        // Return analysis results
-        res.json(analysis);
+
+        // Return the ML model analysis as the API response
+        res.json({ analysis: mlModelOutput });
     } catch (error) {
         console.error('Analysis error:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             message: 'Error analyzing news content',
-            error: error.message 
+            error: error.message
         });
     }
 };
@@ -64,52 +65,32 @@ const analyzeNews = async (req, res) => {
 const extractContentFromSource = async (title, content, sourceUrl) => {
     let analyzedContent = content;
     let analyzedTitle = title;
-    let sourceDomain = null;
 
     if (sourceUrl && (!content || !title)) {
         try {
             const response = await axios.get(sourceUrl);
             const $ = cheerio.load(response.data);
-            
+
             if (!title) {
-                analyzedTitle = $('meta[property="og:title"]').attr('content') || 
-                              $('title').text() || 
-                              sourceUrl;
-            }
-            
-            if (!content) {
-                analyzedContent = $('meta[property="og:description"]').attr('content') || 
-                                $('meta[name="description"]').attr('content') || 
-                                $('article').text() || 
-                                $('p').text();
+                analyzedTitle = $('meta[property="og:title"]').attr('content') ||
+                    $('title').text() ||
+                    sourceUrl;
             }
 
-            sourceDomain = sourceService.extractDomain(sourceUrl);
+            if (!content) {
+                analyzedContent = $('meta[property="og:description"]').attr('content') ||
+                    $('meta[name="description"]').attr('content') ||
+                    $('article').text() ||
+                    $('p').text();
+            }
         } catch (error) {
             console.log('Error fetching URL content:', error);
-            // Continue with available data if URL fetch fails
         }
     }
 
-    return { analyzedTitle, analyzedContent, sourceDomain };
-};
-
-// Get analysis history
-const getHistory = async (req, res) => {
-    try {
-        const history = await News.find()
-            .sort({ createdAt: -1 })
-            .limit(10);
-        res.json(history);
-    } catch (error) {
-        res.status(500).json({ 
-            message: 'Error fetching analysis history',
-            error: error.message 
-        });
-    }
+    return { analyzedTitle, analyzedContent };
 };
 
 module.exports = {
-    analyzeNews,
-    getHistory
+    analyzeNews // Export only analyzeNews if getHistory is not defined
 };

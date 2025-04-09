@@ -5,6 +5,7 @@
 const analyzer = require('./analyzer');
 const sourceService = require('./sourceData');
 const {fakePhrases}=require('./../data');
+const axios = require('axios'); // Add axios for making HTTP requests to the ML model
 
 // Additional imports for improved text analysis
 const natural = require('natural');
@@ -347,9 +348,43 @@ const isMainstreamNewsDomain = (domain) => {
     return isDomainLikelyNews && isNewsTLD;
 };
 
+// Call ML model for fake/true classification and sentiment analysis
+const analyzeWithMLModel = async (url,title,content) => {
+    try {
+        console.log('Calling ML model with:', { url }); // Log the input
+        const response = await axios.post('http://127.0.0.1:5000/analyze', {
+            url,
+            title,
+            content
+        });
+        console.log('ML model response:', response.data); // Log the ML model's output
+        return response.data; // Return the ML model's output
+    } catch (error) {
+        console.error('Error calling ML model:', error.message);
+        throw new Error('Failed to analyze with ML model');
+    }
+};
+const fakeNews = async (url,title,content) => {
+    try {
+        console.log('Calling ML model with:', { url }); // Log the input
+        const response = await axios.post('http://127.0.0.1:5001/detect_fake_news', {
+            url,
+            title,
+            content
+        });
+        console.log('ML model response:', response.data);
+        return response.data; // Return the ML model's output
+    } catch (error) {
+        console.error('Error calling ML model:', error.message);
+        throw new Error('Failed to analyze with ML model');
+    }
+};
+
 module.exports = {
     analyzeContent,
+    analyzeWithMLModel, // Export the new function
     fakePhrases,
+    fakeNews,
     // Export new functions for testing
     analyzeStructuralElements,
     analyzeTextCoherence

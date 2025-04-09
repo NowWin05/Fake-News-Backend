@@ -29,6 +29,7 @@ router.post('/analyze', async (req, res) => {
                         $('title').text() || 
                         url;
         }
+        // console.log("originalTitle is " + JSON.stringify(originalTitle));
         
         // Extract content using more robust selectors
         analysisText = $('article').text() || 
@@ -36,13 +37,16 @@ router.post('/analyze', async (req, res) => {
                       $('.content').text() || 
                       $('p').text().substring(0, 5000) || 
                       $('body').text().substring(0, 2000);
+
+        // console.log("analysisText is " + JSON.stringify(analysisText));
                       
         sourceDomain = sourceService.extractDomain(url);
+        // console.log("sourceDomain is " + sourceDomain);
       } catch (error) {
-        console.error('Error fetching URL:', error);
+        // console.error('Error fetching URL:', error);
       }
     }
-
+   
     // Use provided content if URL extraction failed or wasn't provided
     if (!analysisText) {
       analysisText = content || originalTitle || '';
@@ -52,7 +56,7 @@ router.post('/analyze', async (req, res) => {
     const sourceData = sourceService.getSourceCredibility(sourceDomain);
     
     // Generate sentiment analysis
-    const sentiment = analyzer.analyzeSentiment(analysisText);
+    const sentiment = await newsAnalyzer.analyzeWithMLModel(url, originalTitle, analysisText);
     
     // Extract key terms
     const keyTerms = analyzer.extractKeyTerms(analysisText);
@@ -68,6 +72,8 @@ router.post('/analyze', async (req, res) => {
     
     // Calculate credibility score based on source reliability
     let credibilityScore = sourceData.reliability;
+
+    let FakeNews = await newsAnalyzer.fakeNews(url, originalTitle, analysisText);
     
     // Apply structural and writing quality analysis for unknown sources
     // that haven't been identified as suspicious
@@ -78,7 +84,7 @@ router.post('/analyze', async (req, res) => {
       const words = analyzer.tokenizer.tokenize((content || analysisText).toLowerCase());
       const coherenceScore = newsAnalyzer.analyzeTextCoherence(words, (content || analysisText).toLowerCase());
       
-      console.log(`Content quality analysis: structural: ${structuralScore}, coherence: ${coherenceScore}`);
+      // console.log(`Content quality analysis: structural: ${structuralScore}, coherence: ${coherenceScore}`);
       
       // Adjust credibility score for unknown sources based on content quality
       const contentQualityScore = (structuralScore * 0.5) + (coherenceScore * 0.5);
@@ -100,16 +106,34 @@ router.post('/analyze', async (req, res) => {
     
     // Round the credibility score for consistency
     credibilityScore = Math.round(credibilityScore);
-    
+    let positivesrc = (sentiment.sentiment == 'positive') ? sentiment.probability : 0;
+    let negativesrc = (sentiment.sentiment == 'negative') ? sentiment.probability : 0;
+
     // Generate comprehensive analysis results
     const result = {
       // Credibility metrics
+      
+     
+      fakeProbability : 100-FakeNews.confidence*90, 
+    isLikelyFake : (FakeNews.prediction == 'Fake' && FakeNews.confidence > 50) ? true : false,
+    confidence :FakeNews.confidence*85,
+    contentType : 'NEWS',
+    keyFeatures : [],
+    readabilityMetrics : getReadabilityLevel(analysisText),
+    patternAnalysis : {},
+    message : FakeNews.title,
       sourceReliability: sourceData.reliability,
       credibilityScore: credibilityScore,
       languageScore: languageScore,
+
+       sentiment: {
+        positive: positivesrc,
+        negative: negativesrc,
+        neutral: sentiment.probability,
+        tone: sentiment.sentiment
+    },
       contentScore: Math.min(sourceData.reliability + 10, 100),
       factScore: Math.min(sourceData.reliability + (sourceData.factChecking * 5), 100),
-      
       // Verification status
       verificationStatus: analyzer.getVerificationStatus(credibilityScore),
 
@@ -199,11 +223,11 @@ router.post('/analyze', async (req, res) => {
       }
     };
 
-    console.log("API response includes socialMetrics:", !!result.socialMetrics);
+    // console.log("API response includes socialMetrics:", !!result.socialMetrics);
     
     res.json(result);
   } catch (error) {
-    console.error('Analysis error:', error);
+    // console.error('Analysis error:', error);
     res.status(500).json({ error: 'Error analyzing content' });
   }
 });
