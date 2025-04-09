@@ -30,6 +30,7 @@ router.post('/analyze', async (req, res) => {
                         url;
         }
         // console.log("originalTitle is " + JSON.stringify(originalTitle));
+        // console.log("originalTitle is " + JSON.stringify(originalTitle));
         
         // Extract content using more robust selectors
         analysisText = $('article').text() || 
@@ -42,7 +43,9 @@ router.post('/analyze', async (req, res) => {
                       
         sourceDomain = sourceService.extractDomain(url);
         // console.log("sourceDomain is " + sourceDomain);
+        // console.log("sourceDomain is " + sourceDomain);
       } catch (error) {
+        // console.error('Error fetching URL:', error);
         // console.error('Error fetching URL:', error);
       }
     }

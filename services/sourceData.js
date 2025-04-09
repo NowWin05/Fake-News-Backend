@@ -144,44 +144,73 @@ const generateSocialMetrics = (sourceData, title) => {
   if (sourceData.bias > 15) hashtags.push('#conservative');
   else if (sourceData.bias < -15) hashtags.push('#progressive');
   
-  // Ensure at least some hashtags are present
-  if (hashtags.length === 0) {
-    hashtags.push('#news', '#current', '#trending');
+  // Generate platform-specific metrics
+  const twitterShares = Math.floor(engagement * virality * (0.7 + (Math.random() * 0.6)));
+  const twitterEngagement = Math.floor(twitterShares * (1.2 + (Math.random() * 1.0)));
+  
+  // Facebook tends to have more shares but might be less for highly biased content
+  const facebookFactor = bias > 20 ? 0.8 : 1.2;
+  const facebookShares = Math.floor(engagement * facebookFactor * (0.8 + (Math.random() * 0.4)));
+  const facebookEngagement = Math.floor(facebookShares * (1.1 + (Math.random() * 0.8)));
+  
+  // Instagram tends to focus more on visual content, so text-only news might get less engagement
+  const instagramEngagement = Math.floor(engagement * 0.7 * (0.6 + (Math.random() * 0.8)));
+  
+  // Generate sentiment leaning based on source bias and reliability
+  // Highly reliable sources tend to generate more balanced sentiment
+  // Highly biased sources tend to generate more polarized sentiment
+  let twitterSentiment, facebookSentiment, instagramSentiment;
+  
+  if (bias > 20) {
+    // Highly biased content generates more polarized reactions
+    twitterSentiment = 100 - Math.floor(reliability * 0.6); // Higher number is more negative
+    facebookSentiment = Math.floor(40 + (Math.random() * 30)); // More mixed but still negative leaning
+    instagramSentiment = Math.floor(30 + (Math.random() * 40)); // More mixed
+  } else if (reliability > 75) {
+    // Highly reliable content tends to generate more positive sentiment
+    twitterSentiment = Math.floor(30 + (Math.random() * 30));
+    facebookSentiment = Math.floor(20 + (Math.random() * 40));
+    instagramSentiment = Math.floor(30 + (Math.random() * 30));
+  } else {
+    // Average content gets mixed sentiment
+    twitterSentiment = Math.floor(40 + (Math.random() * 30));
+    facebookSentiment = Math.floor(35 + (Math.random() * 30));
+    instagramSentiment = Math.floor(35 + (Math.random() * 30));
   }
   
-  const socialData = {
+  // Calculate overall metrics
+  const viralityScore = Math.min(100, Math.floor((twitterShares + facebookShares) / 100));
+  const publicInterest = Math.min(100, Math.floor((twitterEngagement + facebookEngagement + instagramEngagement) / 300));
+  const discussionPolarity = calculateDiscussionPolarity(sourceData.bias);
+  
+  return {
     twitter: {
-      shares: Math.floor((baseEngagement * virality * 0.8) * (0.7 + (Math.random() * 0.6))),
-      engagement: Math.floor((baseEngagement * virality) * (0.9 + (Math.random() * 0.4))),
-      sentiment: reliability > 60 ? (65 + Math.floor(Math.random() * 20)) : (40 + Math.floor(Math.random() * 30)),
+      shares: twitterShares,
+      engagement: twitterEngagement,
+      sentiment: twitterSentiment,
       hashtags: hashtags
     },
     facebook: {
-      shares: Math.floor((baseEngagement * 1.2) * (0.8 + (Math.random() * 0.5))),
-      engagement: Math.floor((baseEngagement * 1.5) * (0.9 + (Math.random() * 0.5))),
-      sentiment: reliability > 60 ? (70 + Math.floor(Math.random() * 15)) : (50 + Math.floor(Math.random() * 20)),
-      hashtags: hashtags
+      shares: facebookShares,
+      engagement: facebookEngagement,
+      sentiment: facebookSentiment,
+      hashtags: hashtags.slice(0, 3) // Facebook uses fewer hashtags
     },
     instagram: {
-      engagement: Math.floor((baseEngagement * 0.7) * (0.8 + (Math.random() * 0.4))),
-      sentiment: reliability > 60 ? (75 + Math.floor(Math.random() * 15)) : (55 + Math.floor(Math.random() * 15)),
-      hashtags: hashtags
+      engagement: instagramEngagement,
+      sentiment: instagramSentiment,
+      hashtags: hashtags.slice(0, 4)
     },
     overall: {
-      viralityScore: Math.min(100, Math.floor((bias * 0.7) + (100 - reliability) * 0.5 + Math.random() * 20)),
-      publicInterest: Math.floor(60 + Math.random() * 30),
-      discussionPolarity: calculateDiscussionPolarity(sourceData.bias)
+      viralityScore,
+      publicInterest,
+      discussionPolarity
     }
   };
-  
-  console.log("Generated social metrics:", socialData);
-  return socialData;
 };
 
 module.exports = {
-  sourceReputationData,
   extractDomain,
   getSourceCredibility,
-  calculateDiscussionPolarity,
   generateSocialMetrics
 };
